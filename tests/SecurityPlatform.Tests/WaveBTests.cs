@@ -84,6 +84,21 @@ public class WaveBTests
         Assert.Contains("10.0.0.9", url);
     }
 
+    private sealed class PortProbe : DahuaDriver { public int Http(Device d) => HttpPort(d); }
+
+    [Fact]
+    public void HttpPort_falls_back_from_sdk_and_rtsp_ports_to_80()
+    {
+        var probe = new PortProbe();
+        Assert.Equal(80, probe.Http(new Device { Port = 37777 })); // SDK Dahua/Intelbras
+        Assert.Equal(80, probe.Http(new Device { Port = 37778 })); // SDK
+        Assert.Equal(80, probe.Http(new Device { Port = 554 }));   // RTSP
+        Assert.Equal(80, probe.Http(new Device { Port = 34567 })); // XM/JUAN
+        Assert.Equal(80, probe.Http(new Device { Port = 0 }));     // nao informada
+        Assert.Equal(80, probe.Http(new Device { Port = 80 }));
+        Assert.Equal(8000, probe.Http(new Device { Port = 8000 })); // HTTP custom preservada
+    }
+
     [Fact]
     public void Dahua_parses_real_presets_from_getPresets()
     {

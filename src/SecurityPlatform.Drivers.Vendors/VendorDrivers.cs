@@ -20,9 +20,21 @@ public abstract class HttpVendorDriverBase : IDeviceDriver, IDisposable
     private readonly Dictionary<string, HttpClient> _clients = new(StringComparer.Ordinal);
     private readonly object _gate = new();
 
+    /// <summary>
+    /// Porta do servidor HTTP CGI (snapshot, PTZ, configManager). Dahua/Intelbras
+    /// expoem varias portas: 80 = HTTP, 554 = RTSP, 37777/37778 = SDK binario,
+    /// 34567 = protocolo XM/JUAN. O usuario costuma cadastrar a porta do SDK
+    /// (a que a interface da camera mostra como "Porta TCP"), mas as chamadas
+    /// HTTP so funcionam na 80. Portas nao-HTTP conhecidas caem para 80; uma
+    /// porta HTTP customizada (ex.: 8000) e preservada.
+    /// </summary>
+    protected static int HttpPort(Device d)
+        => d.Port is <= 0 or 554 or 37777 or 37778 or 34567 ? 80 : d.Port;
+
     protected HttpClient Client(Device d)
     {
-        var key = $"{d.Id}|{d.Host}:{d.Port}|{d.Username}";
+        var port = HttpPort(d);
+        var key = $"{d.Id}|{d.Host}:{port}|{d.Username}";
         lock (_gate)
         {
             if (_clients.TryGetValue(key, out var c)) return c;
@@ -34,7 +46,7 @@ public abstract class HttpVendorDriverBase : IDeviceDriver, IDisposable
             };
             c = new HttpClient(handler)
             {
-                BaseAddress = new Uri($"http://{d.Host}:{(d.Port <= 0 ? 80 : d.Port)}"),
+                BaseAddress = new Uri($"http://{d.Host}:{port}"),
                 Timeout = TimeSpan.FromSeconds(10)
             };
             _clients[key] = c;
@@ -49,7 +61,8 @@ public abstract class HttpVendorDriverBase : IDeviceDriver, IDisposable
             using var tcp = new TcpClient();
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(3));
-            await tcp.ConnectAsync(device.Host, device.Port <= 0 ? 80 : device.Port, cts.Token);
+            // Testa a porta HTTP (a mesma que os comandos usam), nao a do SDK.
+            await tcp.ConnectAsync(device.Host, HttpPort(device), cts.Token);
             return true;
         }
         catch { return false; }
