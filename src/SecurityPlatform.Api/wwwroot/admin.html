@@ -2488,9 +2488,121 @@ VIEWS.atividade = VIEWS.saude;
 VIEWS.info = VIEWS.saude;
 
 VIEWS.auditoria = async () => {
-  const logs = await api('/api/audit?take=300');
-  $('view').innerHTML = tabelaLog(logs, 'Trilha de auditoria');
+  const all = await api('/api/audit?take=1000');
+  window.__auditLogs = all;
+  window.__auditFiltro = { q:'', acao:'', res:'' };
+  const acoes = [...new Set(all.map(a => a.action))].sort();
+
+  $('view').innerHTML = `
+    <div class="panel">
+      <h3>Trilha de auditoria <span class="fill"></span>
+        <span class="muted" id="auCount" style="font-size:11px;text-transform:none;letter-spacing:0"></span>
+        <button type="button" class="ghost" id="auCsv">⬇ CSV</button>
+        <button type="button" class="ghost" id="auPdf">🖶 PDF</button>
+      </h3>
+      <div class="inline" style="margin-bottom:12px">
+        <label class="f" style="flex:2;min-width:220px">Buscar
+          <input id="auQ" type="search" placeholder="usuário, ação, objeto, IP, detalhe…" autocomplete="off"></label>
+        <label class="f" style="min-width:170px">Ação
+          <select id="auAcao"><option value="">Todas</option>
+            ${acoes.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></label>
+        <label class="f" style="min-width:130px">Resultado
+          <select id="auRes"><option value="">Todos</option>
+            <option value="ok">Sucesso</option><option value="fail">Falha</option></select></label>
+        <button type="button" class="ghost" id="auLimpar">Limpar</button>
+      </div>
+      <div id="auTabela"></div>
+    </div>`;
+
+  const aplicar = () => {
+    const f = window.__auditFiltro;
+    f.q = $('auQ').value.trim().toLowerCase();
+    f.acao = $('auAcao').value;
+    f.res = $('auRes').value;
+    const res = filtrarAudit(all, f);
+    $('auTabela').innerHTML = tabelaAuditLinhas(res);
+    $('auCount').textContent = `${res.length} de ${all.length} registros`;
+  };
+  $('auQ').oninput = aplicar;
+  $('auAcao').onchange = aplicar;
+  $('auRes').onchange = aplicar;
+  $('auLimpar').onclick = () => { $('auQ').value = ''; $('auAcao').value = ''; $('auRes').value = ''; aplicar(); };
+  $('auCsv').onclick = () => exportarAuditCsv(filtrarAudit(all, window.__auditFiltro));
+  $('auPdf').onclick = () => exportarAuditPdf(filtrarAudit(all, window.__auditFiltro));
+  aplicar();
 };
+
+/* Filtra a trilha por texto livre, ação e resultado (tudo no cliente). */
+const filtrarAudit = (logs, f) => logs.filter(a => {
+  if (f.acao && a.action !== f.acao) return false;
+  if (f.res === 'ok' && !a.success) return false;
+  if (f.res === 'fail' && a.success) return false;
+  if (f.q) {
+    const blob = `${a.username} ${a.action} ${a.objectType} ${a.objectId} ${a.ipAddress} ${a.detail}`.toLowerCase();
+    if (!blob.includes(f.q)) return false;
+  }
+  return true;
+});
+
+const tabelaAuditLinhas = (logs) => `
+  <table><thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th>
+    <th>Objeto</th><th>Resultado</th><th>IP</th><th>Detalhe</th></tr></thead>
+  <tbody>${logs.map(a => `<tr>
+    <td class="muted">${new Date(a.createdAt).toLocaleString()}</td>
+    <td><b>${esc(a.username)}</b></td><td><code>${esc(a.action)}</code></td>
+    <td class="muted">${esc(a.objectType)}${a.objectId ? ' ' + esc(a.objectId) : ''}</td>
+    <td class="${a.success ? 'ok' : 'off'}">${a.success ? '✓' : '✗ falha'}</td>
+    <td class="muted">${esc(a.ipAddress)}</td>
+    <td class="muted" style="font-size:11px">${esc(a.detail)}</td>
+  </tr>`).join('') || '<tr><td colspan="7" class="muted">Nenhum registro para o filtro atual.</td></tr>'}
+  </tbody></table>`;
+
+/* ---- exportação da auditoria (CSV / PDF) ---- */
+const carimboArquivo = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+
+function baixarArquivo(conteudo, nome, tipo) {
+  const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
+  const a = document.createElement('a');
+  a.href = url; a.download = nome;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportarAuditCsv(logs) {
+  const cab = ['Quando', 'Usuário', 'Ação', 'Tipo objeto', 'ID objeto', 'Resultado', 'IP', 'Detalhe'];
+  const linhas = logs.map(a => [
+    new Date(a.createdAt).toLocaleString(), a.username, a.action, a.objectType,
+    a.objectId, a.success ? 'sucesso' : 'falha', a.ipAddress, a.detail]);
+  const csv = [cab, ...linhas]
+    .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+  baixarArquivo('﻿' + csv, `auditoria-${carimboArquivo()}.csv`, 'text/csv;charset=utf-8');
+}
+
+function exportarAuditPdf(logs) {
+  const w = window.open('', '_blank');
+  if (!w) { alert('Permita pop-ups para gerar o PDF.'); return; }
+  const linhas = logs.map(a => `<tr>
+    <td>${new Date(a.createdAt).toLocaleString()}</td><td>${esc(a.username)}</td>
+    <td>${esc(a.action)}</td><td>${esc(a.objectType)}${a.objectId ? ' ' + esc(a.objectId) : ''}</td>
+    <td class="${a.success ? 'ok' : 'off'}">${a.success ? 'sucesso' : 'falha'}</td>
+    <td>${esc(a.ipAddress)}</td><td>${esc(a.detail)}</td></tr>`).join('');
+  w.document.write(`<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
+    <title>Auditoria ${carimboArquivo()}</title><style>
+      body{font:12px/1.4 system-ui,sans-serif;color:#111;margin:24px;}
+      h1{font-size:16px;margin:0 0 2px;} .meta{color:#555;font-size:11px;margin-bottom:14px;}
+      table{width:100%;border-collapse:collapse;} th,td{text-align:left;padding:4px 6px;border-bottom:1px solid #ddd;vertical-align:top;}
+      th{background:#f0f0f0;font-size:10px;text-transform:uppercase;letter-spacing:.05em;}
+      .ok{color:#137333;} .off{color:#c5221f;} @media print{body{margin:0;}}
+    </style></head><body>
+    <h1>Trilha de auditoria</h1>
+    <div class="meta">Gerado em ${new Date().toLocaleString()} — ${logs.length} registros</div>
+    <table><thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Objeto</th>
+      <th>Resultado</th><th>IP</th><th>Detalhe</th></tr></thead>
+    <tbody>${linhas || '<tr><td colspan="7">Nenhum registro.</td></tr>'}</tbody></table>
+    <scr` + `ipt>window.onload=()=>{window.print();}<\/scr` + `ipt></body></html>`);
+  w.document.close();
+}
+
 const tabelaLog = (logs, titulo) => `
   <div class="panel"><h3>${titulo} — ${logs.length} registros</h3>
     <table><thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th>
