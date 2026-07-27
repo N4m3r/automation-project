@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plataforma Unificada de Segurança</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; font:14px/1.55 system-ui,sans-serif;
+         background:radial-gradient(1200px 600px at 50% -10%, #16202c 0%, #0e1116 60%); color:#e6edf3; }
+  input, button, select { padding:8px 10px; border-radius:6px; border:1px solid #30363d;
+                          background:#0d1117; color:inherit; font:inherit; }
+  button { background:#238636; border-color:#238636; cursor:pointer; font-weight:600; }
+  button:hover { background:#2ea043; }
+  button.ghost { background:#21262d; border-color:#30363d; font-weight:400; }
+  .hidden { display:none !important; }
+  .err { color:#f85149; font-size:13px; min-height:19px; }
+  .muted { color:#8b949e; }
+  .ok { color:#3fb950; } .off { color:#f85149; }
+
+  /* ---------- telas centradas ---------- */
+  .center { display:grid; place-items:center; min-height:100vh; padding:24px; }
+  .box { width:350px; display:grid; gap:10px; background:#161b22; border:1px solid #23282f;
+         border-radius:11px; padding:28px; box-shadow:0 16px 50px #0008; }
+  .box h1 { font-size:16px; margin:0; }
+  .box .sub { color:#8b949e; font-size:12.5px; margin:-5px 0 5px; }
+
+  /* ---------- portal ---------- */
+  #portal { max-width:960px; margin:0 auto; padding:36px 24px 60px; }
+  .head { display:flex; align-items:center; gap:14px; margin-bottom:6px; }
+  .head h1 { font-size:22px; margin:0; letter-spacing:-.01em; }
+  .head .fill { flex:1 }
+  .sub2 { color:#8b949e; margin:0 0 26px; font-size:13.5px; }
+
+  .destinos { display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr)); gap:16px; }
+  .destino { background:#161b22; border:1px solid #23282f; border-radius:11px; padding:22px;
+             display:flex; flex-direction:column; gap:9px; text-decoration:none; color:inherit;
+             transition:border-color .15s, transform .15s, background .15s; }
+  .destino:hover { border-color:#2ea043; background:#19212a; transform:translateY(-2px); }
+  .destino .ico { font-size:26px; }
+  .destino h2 { font-size:15px; margin:0; }
+  .destino p { margin:0; color:#8b949e; font-size:12.5px; line-height:1.5; flex:1 }
+  .destino .cta { color:#3fb950; font-size:12.5px; font-weight:600; margin-top:4px; }
+  .destino.bloq { opacity:.5; cursor:not-allowed; pointer-events:none; }
+  .destino.bloq .cta { color:#8b949e; }
+
+  .resumo { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+            gap:12px; margin:30px 0 0; }
+  .stat { background:#12171e; border:1px solid #1e242c; border-radius:9px; padding:13px 15px; }
+  .stat .lbl { color:#8b949e; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; }
+  .stat .val { font-size:19px; font-weight:700; margin-top:2px; }
+</style>
+</head>
+<body>
+
+<!-- ============================= LOGIN ============================= -->
+<section id="login" class="center">
+  <!-- method="post" é defesa em profundidade: se o JS falhar, o submit nativo
+       não pode vazar a senha na querystring, no histórico e no referrer. -->
+  <form id="loginForm" class="box" method="post" action="about:blank">
+    <h1>🛡️ Plataforma Unificada de Segurança</h1>
+    <p class="sub">Entre para escolher o cliente de acesso</p>
+    <input name="username" placeholder="Usuário" autocomplete="username" required autofocus>
+    <input name="password" type="password" placeholder="Senha" autocomplete="current-password" required>
+    <input name="totpCode" id="totp" class="hidden" placeholder="Código 2FA (6 dígitos)"
+           inputmode="numeric" autocomplete="one-time-code">
+    <button type="submit">Entrar</button>
+    <div id="ssoRow" class="hidden" style="display:grid;gap:8px;margin-top:4px">
+      <button type="button" class="ghost" id="btnOidc">Entrar com SSO (OIDC)</button>
+      <button type="button" class="ghost" id="btnSaml">Entrar com SSO (SAML)</button>
+    </div>
+    <div class="err" id="loginErr"></div>
+  </form>
+</section>
+
+<!-- ========================= TROCA DE SENHA ========================= -->
+<section id="troca" class="center hidden">
+  <form id="trocaForm" class="box" method="post" action="about:blank">
+    <h1>Defina uma nova senha</h1>
+    <p class="sub">Obrigatório no primeiro acesso.</p>
+    <input name="currentPassword" type="password" placeholder="Senha atual" required>
+    <input name="newPassword" type="password" placeholder="Nova senha" autocomplete="new-password" required>
+    <ul id="regras" style="margin:0;padding-left:18px;color:#8b949e;font-size:12px;line-height:1.7"></ul>
+    <button type="submit">Salvar e continuar</button>
+    <div class="err" id="trocaErr"></div>
+  </form>
+</section>
+
+<!-- ============================ PORTAL ============================ -->
+<section id="portal" class="hidden">
+  <div class="head">
+    <h1>🛡️ Plataforma Unificada de Segurança</h1>
+    <div class="fill"></div>
+    <span class="muted" id="quem"></span>
+    <button class="ghost" onclick="sair()">Sair</button>
+  </div>
+  <p class="sub2">Posto unificado: live, mapa, alarmes, acesso e export na <b>mesma página</b>.</p>
+
+  <div id="checklist" class="hidden" style="margin-bottom:20px"></div>
+
+  <div style="margin-bottom:18px">
+    <a class="destino" href="/monitor.html" style="display:block;text-align:center;padding:28px">
+      <span class="ico">🖥️</span>
+      <h2>Abrir posto de operação</h2>
+      <p>Live · Eventos · Mapa · Acesso · Export · Config — tudo em um shell.</p>
+      <span class="cta">Entrar no posto →</span>
+    </a>
+  </div>
+
+  <div class="destinos">
+    <a class="destino" href="/monitor.html?view=events">
+      <span class="ico">🚨</span>
+      <h2>Fila de alarmes</h2>
+      <p>Atalho para a aba Eventos do posto.</p>
+      <span class="cta">Abrir →</span>
+    </a>
+
+    <a class="destino" href="/monitor.html?view=map" id="cardMapa">
+      <span class="ico">🗺️</span>
+      <h2>Mapa</h2>
+      <p>Mapa sinóptico embutido no posto.</p>
+      <span class="cta">Abrir →</span>
+    </a>
+
+    <a class="destino" href="/monitor.html?view=access">
+      <span class="ico">🚪</span>
+      <h2>Acesso</h2>
+      <p>Portas e visitantes no posto.</p>
+      <span class="cta">Abrir →</span>
+    </a>
+
+    <a class="destino" id="cardAdmin" href="/monitor.html?view=config">
+      <span class="ico">⚙️</span>
+      <h2>Configuração</h2>
+      <p>Admin embutido (ou tela completa legada).</p>
+      <span class="cta" id="ctaAdmin">Abrir →</span>
+    </a>
+
+    <a class="destino" href="/mobile.html">
+      <span class="ico">📱</span>
+      <h2>Mobile (PWA)</h2>
+      <p>Redireciona ao posto em layout compacto.</p>
+      <span class="cta">Abrir →</span>
+    </a>
+  </div>
+
+  <div class="resumo" id="resumo"></div>
+</section>
+
+<script>
+// SSO entre portal, mapa, monitor, admin e export (localStorage = todas as abas).
+function loadToken() {
+  return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+}
+function saveToken(t) {
+  if (t) {
+    localStorage.setItem('token', t);
+    sessionStorage.setItem('token', t);
+  } else {
+    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
+  }
+}
+let token = loadToken();
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+
+async function api(path, options = {}) {
+  const res = await fetch(path, { ...options, headers: {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: 'Bearer ' + token } : {}), ...options.headers } });
+  if (res.status === 401) { sair(); throw new Error('Sessão expirada'); }
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Erro ${res.status}`);
+  return res.status === 204 ? null : res.json();
+}
+
+/* ------------------------------- login ------------------------------- */
+(async () => {
+  try {
+    const s = await fetch('/api/auth/oidc/status').then(r => r.json());
+    const row = $('ssoRow');
+    if (!row) return;
+    let any = false;
+    if (s.oidc?.enabled) { $('btnOidc').classList.remove('hidden'); any = true;
+      $('btnOidc').onclick = () => location.href = '/api/auth/oidc/login'; }
+    else $('btnOidc').classList.add('hidden');
+    if (s.saml?.enabled) { $('btnSaml').classList.remove('hidden'); any = true;
+      $('btnSaml').onclick = () => location.href = '/api/auth/saml/login'; }
+    else $('btnSaml').classList.add('hidden');
+    if (any) { row.classList.remove('hidden'); row.style.display = 'grid'; }
+  } catch { /* SSO opcional */ }
+})();
+
+$('loginForm').onsubmit = async e => {
+  e.preventDefault();
+  $('loginErr').textContent = '';
+
+  const res = await fetch('/api/auth/login', { method:'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+  const d = await res.json();
+
+  if (!d.ok) {
+    if (d.twoFactorRequired) { $('totp').classList.remove('hidden'); $('totp').focus(); }
+    $('loginErr').textContent = d.error || 'Falha no login';
+    return;
+  }
+
+  // Token em localStorage + sessionStorage: mapa/monitor/admin reutilizam sem novo login.
+  token = d.token;
+  saveToken(token);
+
+  if (d.mustChangePassword) {
+    $('login').classList.add('hidden');
+    $('troca').classList.remove('hidden');
+    $('trocaForm').currentPassword.value = $('loginForm').password.value;
+    $('trocaForm').newPassword.focus();
+    return;
+  }
+  entrar();
+};
+
+/* --------------------------- troca de senha --------------------------- */
+// Regras espelhadas do servidor — o servidor continua sendo a autoridade.
+const REGRAS = [
+  { t:'Mínimo de 10 caracteres', ok: p => p.length >= 10 },
+  { t:'Uma letra maiúscula',     ok: p => /[A-Z]/.test(p) },
+  { t:'Uma letra minúscula',     ok: p => /[a-z]/.test(p) },
+  { t:'Um número',               ok: p => /[0-9]/.test(p) },
+  { t:'Um caractere especial',   ok: p => /[^A-Za-z0-9]/.test(p) },
+];
+
+function pintarRegras(senha = '') {
+  $('regras').innerHTML = REGRAS.map(r => {
+    const ok = r.ok(senha);
+    return `<li style="color:${ok ? '#3fb950' : '#8b949e'}">${ok ? '✓' : '○'} ${r.t}</li>`;
+  }).join('');
+}
+pintarRegras();
+$('trocaForm').newPassword.addEventListener('input', e => pintarRegras(e.target.value));
+
+$('trocaForm').onsubmit = async e => {
+  e.preventDefault();
+  $('trocaErr').textContent = '';
+  const dados = Object.fromEntries(new FormData(e.target));
+
+  const falha = REGRAS.find(r => !r.ok(dados.newPassword));
+  if (falha) { $('trocaErr').textContent = `A nova senha não atende: ${falha.t.toLowerCase()}.`; return; }
+
+  try {
+    await api('/api/auth/change-password', { method:'POST', body: JSON.stringify(dados) });
+    $('troca').classList.add('hidden');
+    e.target.reset(); pintarRegras();
+    entrar();
+  } catch (err) { $('trocaErr').textContent = err.message; }
+};
+
+/* ------------------------------- portal ------------------------------- */
+async function entrar() {
+  // Fluxo padrão: vai direto ao posto unificado (salvo ?stay=1 no portal).
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('stay') !== '1' && qs.get('portal') !== '1') {
+    location.href = '/monitor.html';
+    return;
+  }
+
+  const me = await api('/api/auth/me');
+
+  $('login').classList.add('hidden');
+  $('troca').classList.add('hidden');
+  $('portal').classList.remove('hidden');
+  $('quem').textContent = `${me.fullName || me.username}${me.isAdmin ? ' · administrador' : ''}`;
+
+  // Sem perfil de administrador o cartão fica visível porém inativo — o
+  // usuário entende que a área existe e que falta permissão.
+  if (!me.isAdmin) {
+    $('cardAdmin').classList.add('bloq');
+    $('ctaAdmin').textContent = 'Requer perfil de administrador';
+  }
+
+  resumo(me);
+}
+
+async function resumo(me) {
+  const cartao = (lbl, val, cls = '') =>
+    `<div class="stat"><div class="lbl">${lbl}</div><div class="val ${cls}">${val}</div></div>`;
+  const cl = $('checklist');
+  if (cl) { cl.classList.add('hidden'); cl.innerHTML = ''; }
+
+  try {
+    const cams = await api('/api/vms/cameras');
+    const online = cams.filter(c => c.status === 'Online').length;
+
+    let html = cartao('Câmeras', cams.length)
+             + cartao('Online', `${online}<span class="muted" style="font-size:13px">/${cams.length}</span>`,
+                      online === cams.length && cams.length ? 'ok' : online ? '' : 'off');
+
+    let queueOpen = 0;
+    if (me.isAdmin) {
+      const s = await api('/api/admin/server/status');
+      html += cartao('Disco', (s.health?.diskUsedPercent ?? '—') + '%',
+                     (s.health?.diskUsedPercent || 0) > 90 ? 'off' : '')
+            + cartao('Eventos 24h', s.eventos24h ?? '—')
+            + cartao('Gravações', (s.gravacoes?.gigabytes ?? '—') + ' GB');
+      try {
+        const q = await api('/api/vms/alarms/queue?take=20');
+        queueOpen = (q || []).length;
+        if (queueOpen) html += cartao('Fila alarmes', queueOpen, 'off');
+      } catch { /* */ }
+    }
+    $('resumo').innerHTML = html;
+
+    // Checklist de primeiros passos (só admin)
+    if (me.isAdmin && cl) {
+      const items = [];
+      if (!cams.length)
+        items.push({ t: 'Cadastre a primeira câmera', href: '/admin.html', cta: 'Abrir admin' });
+      else if (online === 0)
+        items.push({ t: 'Nenhuma câmera online — confira IP/senha ou Saúde no admin', href: '/admin.html', cta: 'Ver saúde' });
+      if (queueOpen > 0)
+        items.push({ t: `${queueOpen} alarme(s) na fila de tratamento`, href: '/admin.html', cta: 'Tratar' });
+      if (items.length) {
+        cl.classList.remove('hidden');
+        cl.innerHTML = `<div style="background:#161b22;border:1px solid #2ea04355;border-radius:10px;padding:14px 16px">
+          <div style="font-weight:600;margin-bottom:8px">Próximos passos</div>
+          ${items.map(i => `<div style="display:flex;align-items:center;gap:10px;margin:6px 0">
+            <span style="flex:1;color:#c9d1d9;font-size:13px">${i.t}</span>
+            <a href="${i.href}" style="color:#3fb950;font-weight:600;font-size:12.5px;text-decoration:none">${i.cta} →</a>
+          </div>`).join('')}
+        </div>`;
+      }
+    }
+  } catch {
+    $('resumo').innerHTML = '';
+  }
+}
+
+function sair() {
+  token = '';
+  saveToken('');
+  $('portal').classList.add('hidden');
+  $('troca').classList.add('hidden');
+  $('login').classList.remove('hidden');
+}
+
+// Sessão já aberta (mesma aba ou outra): entra direto no portal.
+if (token) entrar().catch(sair);
+</script>
+</body>
+</html>

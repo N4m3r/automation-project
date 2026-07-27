@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SecurityPlatform.Core\SecurityPlatform.Core.csproj" />
+    <ProjectReference Include="..\SecurityPlatform.Modules.Security\SecurityPlatform.Modules.Security.csproj" />
+  </ItemGroup>
+
+  <!--
+    Regras internas (leitura do nome do segmento, confinamento de caminho) sao
+    detalhe de implementacao, mas erram em silencio. Abrir so para os testes
+    permite cobri-las sem torna-las API publica do modulo.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="SecurityPlatform.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ACadSharp" Version="3.1.12" />
+    <PackageReference Include="MQTTnet" Version="4.3.7.1207" />
+    <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+  </ItemGroup>
+
+</Project>

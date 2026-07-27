@@ -1,0 +1,72 @@
+# All-in-One: docker compose up -d
+# Distribuido / HA:
+#   - compartilhar volume "keyring" (Security__KeyRingPath) entre api e recorders
+#   - Vms__HaEnabled=true + mesmo PostgreSQL
+#   - replicar "recorder" com Vms__ShardIndex 0..N-1 e Vms__ShardCount=N
+#   - Security__JwtKey igual em todos os nos
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: platform
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d platform"]
+      interval: 5s
+      retries: 10
+
+  media:
+    image: bluenviron/mediamtx:latest
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "8554:8554"   # RTSP
+      - "8888:8888"   # HLS
+      - "8889:8889"   # WebRTC
+      - "9997:9997"   # API de controle
+
+  api:
+    build: .
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      ConnectionStrings__Default: "Host=db;Database=platform;Username=app;Password=app"
+      Security__JwtKey: "${SECURITY_JWT_KEY:-change-me-in-production-use-32chars-min}"
+      Security__KeyRingPath: "/data/keys"
+      Vms__MediaMtxApi: "http://media:9997"
+      Vms__MediaPublicHost: "http://localhost"
+      Vms__StoragePath: "/data/recordings"
+      Vms__RecorderEnabled: "false"
+      Vms__HaEnabled: "true"
+      Vms__NodeId: "api-0"
+    volumes:
+      - recordings:/data/recordings
+      - keyring:/data/keys
+    ports: ["8080:8080"]
+
+  recorder:
+    build: .
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      ConnectionStrings__Default: "Host=db;Database=platform;Username=app;Password=app"
+      Security__JwtKey: "${SECURITY_JWT_KEY:-change-me-in-production-use-32chars-min}"
+      Security__KeyRingPath: "/data/keys"
+      Vms__StoragePath: "/data/recordings"
+      Vms__RecorderEnabled: "true"
+      Vms__HaEnabled: "true"
+      Vms__NodeId: "recorder-0"
+      Vms__ShardIndex: "0"
+      Vms__ShardCount: "1"
+      Urls: "http://0.0.0.0:8081"
+    volumes:
+      - recordings:/data/recordings
+      - keyring:/data/keys
+
+volumes:
+  pgdata:
+  recordings:
+  keyring:

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url=/monitor.html?view=map">
+<title>Mapa → Posto unificado</title>
+<script>
+  // Mantém deep-link de câmera se houver
+  const q = new URLSearchParams(location.search);
+  const cam = q.get('cam') || q.get('camera');
+  let dest = '/monitor.html?view=map';
+  if (cam) dest = '/monitor.html?cam=' + encodeURIComponent(cam) + '&action=live';
+  location.replace(dest);
+</script>
+</head>
+<body>
+  <p style="font:14px system-ui;color:#8b949e;padding:24px">
+    O mapa agora faz parte do <a href="/monitor.html?view=map">posto unificado</a>…
+  </p>
+</body>
+</html>

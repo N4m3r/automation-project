@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.8.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SecurityPlatform.Core\SecurityPlatform.Core.csproj" />
+    <ProjectReference Include="..\SecurityPlatform.Modules.Vms\SecurityPlatform.Modules.Vms.csproj" />
+    <ProjectReference Include="..\SecurityPlatform.Modules.Security\SecurityPlatform.Modules.Security.csproj" />
+    <ProjectReference Include="..\SecurityPlatform.Modules.Admin\SecurityPlatform.Modules.Admin.csproj" />
+    <ProjectReference Include="..\SecurityPlatform.Drivers.Onvif\SecurityPlatform.Drivers.Onvif.csproj" />
+    <ProjectReference Include="..\SecurityPlatform.Drivers.Hikvision\SecurityPlatform.Drivers.Hikvision.csproj" />
+    <ProjectReference Include="..\SecurityPlatform.Drivers.HttpIo\SecurityPlatform.Drivers.HttpIo.csproj" />
+    <ProjectReference Include="..\SecurityPlatform.Drivers.Vendors\SecurityPlatform.Drivers.Vendors.csproj" />
+    <ProjectReference Include="..\SecurityPlatform.Migrations.Sqlite\SecurityPlatform.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="..\SecurityPlatform.Migrations.Postgres\SecurityPlatform.Migrations.Postgres.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,17 @@
+bin/
+obj/
+data/
+*.user
+.vs/
+appsettings.Development.json
+
+# Binaries / large files (manuais, executaveis)
+*.exe
+*.pdf
+*.zip
+
+# Logs / certs
+logs/
+*.log
+*.crt
+*.key

@@ -1,0 +1,19 @@
+{
+  "name": "Security Platform VMS",
+  "short_name": "VMS Mobile",
+  "description": "Monitoramento, alarmes e controle de acesso",
+  "start_url": "/monitor.html",
+  "display": "standalone",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "orientation": "any",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon",
+      "purpose": "any"
+    }
+  ]
+}

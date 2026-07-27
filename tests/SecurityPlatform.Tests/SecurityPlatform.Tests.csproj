@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SecurityPlatform.Core\SecurityPlatform.Core.csproj" />
+    <ProjectReference Include="..\..\src\SecurityPlatform.Modules.Vms\SecurityPlatform.Modules.Vms.csproj" />
+    <ProjectReference Include="..\..\src\SecurityPlatform.Modules.Security\SecurityPlatform.Modules.Security.csproj" />
+    <ProjectReference Include="..\..\src\SecurityPlatform.Drivers.Onvif\SecurityPlatform.Drivers.Onvif.csproj" />
+    <ProjectReference Include="..\..\src\SecurityPlatform.Drivers.Vendors\SecurityPlatform.Drivers.Vendors.csproj" />
+    <ProjectReference Include="..\..\src\SecurityPlatform.Modules.Admin\SecurityPlatform.Modules.Admin.csproj" />
+    <ProjectReference Include="..\..\src\SecurityPlatform.Migrations.Sqlite\SecurityPlatform.Migrations.Sqlite.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

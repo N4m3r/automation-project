@@ -1,0 +1,53 @@
+# Gateway de midia: converte RTSP das cameras em WebRTC/HLS para o navegador.
+# A API cria/remove os "paths" dinamicamente via a API de controle.
+
+logLevel: info
+
+# --- API de controle -------------------------------------------------------
+# So o backend, na mesma maquina, fala com esta API. Ela guarda as URLs RTSP
+# com usuario e senha das cameras: exposta na rede, entregaria as credenciais
+# de todos os equipamentos a quem fizesse um GET.
+api: yes
+apiAddress: 127.0.0.1:9997
+
+# --- Autorizacao de streaming ---------------------------------------------
+# Cada tentativa de ler um stream e conferida pelo backend, que valida o token
+# e o direito na camera. Sem isto, quem alcanca as portas abaixo assistiria
+# qualquer camera sem passar pelo login.
+authMethod: http
+authHTTPAddress: http://127.0.0.1:8080/api/media/auth
+
+# A autorizacao externa vale para leitura de stream. As demais acoes ficam de
+# fora porque ja estao protegidas por outro meio — a API so escuta no loopback,
+# e a publicacao parte do proprio servidor.
+authHTTPExclude:
+  - action: api
+  - action: publish
+  - action: metrics
+  - action: pprof
+
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp]
+
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
+hlsAlwaysRemux: no
+# Browser em :8080 pede mídia em :8888 — sem CORS o HLS.js falha em silêncio.
+hlsAllowOrigins: ['*']
+
+webrtc: yes
+webrtcAddress: :8889
+# Inclui IPs das interfaces (acesso por IP da LAN, não só localhost).
+webrtcIPsFromInterfaces: yes
+webrtcAdditionalHosts: [localhost, 127.0.0.1]
+
+# Protocolos que a plataforma nao usa ficam desligados: porta aberta sem
+# proposito e superficie de ataque de graca.
+rtmp: no
+srt: no
+moq: no
+
+# Paths sao injetados em runtime pela API. Nenhum cadastro estatico aqui.
+paths: {}
