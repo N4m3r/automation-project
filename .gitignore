@@ -1,6 +1,8 @@
 bin/
 obj/
-data/
+# Pasta de dados em runtime da API (banco, gravacoes, exports). NAO usar
+# "data/" generico: no Windows o Git ignora tambem src/.../Core/Data (codigo).
+/src/SecurityPlatform.Api/data/
 *.user
 .vs/
 appsettings.Development.json
