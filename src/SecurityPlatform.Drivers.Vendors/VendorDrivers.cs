@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -117,6 +118,14 @@ public abstract class HttpVendorDriverBase : IDeviceDriver, IDisposable
 public class DahuaDriver : HttpVendorDriverBase
 {
     public override string Name => "dahua";
+
+    /// <summary>
+    /// Ultimo code PTZ continuo iniciado por dispositivo. O protocolo Dahua/
+    /// Intelbras so para o movimento quando o <c>action=stop</c> usa o mesmo
+    /// <c>code</c> que iniciou â€” sem isso a camera continua girando/zoom apos
+    /// soltar o controle. Chave = Device.Id.
+    /// </summary>
+    private readonly ConcurrentDictionary<int, string> _lastPtzCode = new();
 
     public override Task<string> GetStreamUrlAsync(Device device, CancellationToken ct = default)
     {
@@ -268,14 +277,11 @@ public class DahuaDriver : HttpVendorDriverBase
                 "snapshot" => await SnapshotAsync(http,
                     "/cgi-bin/snapshot.cgi?channel=1", ct),
                 "device_info" => await DeviceInfoAsync(http, ct),
-                "ptz_move" => await PtzAsync(http, parameters, stop: false, ct),
-                "ptz_stop" => await PtzAsync(http, null, stop: true, ct),
+                "ptz_move" => await PtzAsync(http, device, parameters, stop: false, ct),
+                "ptz_stop" => await PtzAsync(http, device, null, stop: true, ct),
                 "ptz_preset" => await GotoPresetAsync(http, parameters, ct),
                 "ptz_preset_set" or "ptz_save_preset" => await SetPresetAsync(http, parameters, ct),
-                "ptz_preset_list" => DriverResult.Success(new Dictionary<string, string>
-                {
-                    ["1"] = "Preset 1", ["2"] = "Preset 2", ["3"] = "Preset 3"
-                }),
+                "ptz_preset_list" => await ListPresetsAsync(http, ct),
                 "talk_open" => await http.GetAsync("/cgi-bin/audio.cgi?action=startTalk", ct)
                     is { IsSuccessStatusCode: true }
                     ? DriverResult.Success()
@@ -316,27 +322,111 @@ public class DahuaDriver : HttpVendorDriverBase
         return DriverResult.Success(new Dictionary<string, string> { ["raw"] = text });
     }
 
-    private static async Task<DriverResult> PtzAsync(
-        HttpClient http, IDictionary<string, string>? p, bool stop, CancellationToken ct)
+    private async Task<DriverResult> PtzAsync(
+        HttpClient http, Device device, IDictionary<string, string>? p, bool stop, CancellationToken ct)
     {
-        // code: 0=up 1=down 2=left 3=right 4=leftup â€¦ 8=zoomin 9=zoomout 1=stop with arg2=0
+        // Dahua/Intelbras ptz.cgi: codes Up/Down/Left/Right + diagonais, ZoomTele/
+        // ZoomWide. Em movimento reto arg2 = velocidade (1..8); nas diagonais
+        // arg1 = velocidade vertical e arg2 = velocidade horizontal.
+        if (stop)
+        {
+            // So para de fato quando o code do stop == code que iniciou. Sem o
+            // ultimo code (ex.: reinicio do servico) para todos os eixos.
+            var last = _lastPtzCode.TryRemove(device.Id, out var lc) ? lc : null;
+            var codes = last is not null
+                ? new[] { last }
+                : new[] { "Left", "Right", "Up", "Down", "ZoomTele", "ZoomWide" };
+            HttpResponseMessage? resp = null;
+            foreach (var c in codes)
+            {
+                resp = await http.GetAsync(
+                    $"/cgi-bin/ptz.cgi?action=stop&channel=0&code={c}&arg1=0&arg2=0&arg3=0", ct);
+            }
+            return resp is { IsSuccessStatusCode: true }
+                ? DriverResult.Success()
+                : DriverResult.Fail($"PTZ stop HTTP {(int)(resp?.StatusCode ?? 0)}");
+        }
+
+        var pan = Clamp(p, "pan");
+        var tilt = Clamp(p, "tilt");
+        var zoom = Clamp(p, "zoom");
+
         string code;
-        if (stop) code = "0";
+        int arg1 = 0, arg2;
+        if (Math.Abs(zoom) > 0.1)
+        {
+            code = zoom > 0 ? "ZoomTele" : "ZoomWide";
+            arg2 = Speed(zoom);
+        }
+        else if (Math.Abs(pan) > 0.1 && Math.Abs(tilt) > 0.1)
+        {
+            // Diagonal: combina pan + tilt para joystick suave.
+            code = (tilt >= 0 ? "Up" : "Down") + (pan >= 0 ? "Right" : "Left");
+            arg1 = Speed(tilt);            // velocidade vertical
+            arg2 = Speed(pan);             // velocidade horizontal
+        }
+        else if (Math.Abs(pan) >= Math.Abs(tilt))
+        {
+            code = pan >= 0 ? "Right" : "Left";
+            arg2 = Speed(pan);
+        }
         else
         {
-            var pan = Clamp(p, "pan");
-            var tilt = Clamp(p, "tilt");
-            var zoom = Clamp(p, "zoom");
-            if (Math.Abs(zoom) > 0.1) code = zoom > 0 ? "ZoomTele" : "ZoomWide";
-            else if (Math.Abs(pan) >= Math.Abs(tilt)) code = pan >= 0 ? "Right" : "Left";
-            else code = tilt >= 0 ? "Up" : "Down";
+            code = tilt >= 0 ? "Up" : "Down";
+            arg2 = Speed(tilt);
         }
-        var arg2 = stop ? 0 : 1;
-        var url = $"/cgi-bin/ptz.cgi?action=start&channel=0&code={code}&arg1=0&arg2={arg2}&arg3=0";
-        if (stop)
-            url = "/cgi-bin/ptz.cgi?action=stop&channel=0&code=Up&arg1=0&arg2=0&arg3=0";
+
+        if (code is "Up" or "Down" or "Left" or "Right" &&
+            Math.Abs(pan) < 0.05 && Math.Abs(tilt) < 0.05 && Math.Abs(zoom) < 0.05)
+            return DriverResult.Fail("PTZ move sem eixo (pan/tilt/zoom = 0)");
+
+        _lastPtzCode[device.Id] = code;
+        var url = $"/cgi-bin/ptz.cgi?action=start&channel=0&code={code}&arg1={arg1}&arg2={arg2}&arg3=0";
         var res = await http.GetAsync(url, ct);
-        return res.IsSuccessStatusCode ? DriverResult.Success() : DriverResult.Fail($"PTZ HTTP {(int)res.StatusCode}");
+        if (res.IsSuccessStatusCode) return DriverResult.Success();
+        _lastPtzCode.TryRemove(device.Id, out _);
+        return DriverResult.Fail($"PTZ HTTP {(int)res.StatusCode}");
+    }
+
+    /// <summary>Mapeia velocidade normalizada -1..1 para a escala Dahua 1..8.</summary>
+    private static int Speed(double normalized)
+        => (int)Math.Clamp(Math.Round(Math.Abs(normalized) * 8), 1, 8);
+
+    private static async Task<DriverResult> ListPresetsAsync(HttpClient http, CancellationToken ct)
+    {
+        // getPresets devolve: list.preset[N].name=... / .presetId=...
+        var res = await http.GetAsync("/cgi-bin/ptz.cgi?action=getPresets&channel=0", ct);
+        if (!res.IsSuccessStatusCode)
+            return DriverResult.Fail($"preset list HTTP {(int)res.StatusCode}");
+        var text = await res.Content.ReadAsStringAsync(ct);
+        var map = ParsePresets(text);
+        return DriverResult.Success(map);
+    }
+
+    /// <summary>Parser publico para testes â€” presets Dahua/Intelbras (getPresets).</summary>
+    public static Dictionary<string, string> ParsePresets(string text)
+    {
+        // Agrupa por indice N em list.preset[N].(Name|PresetID|Index)
+        var byIdx = new Dictionary<int, (string? Name, string? Id)>();
+        foreach (Match m in Regex.Matches(text,
+                     @"preset\[(\d+)\]\.(Name|PresetID|PresetId|Index)\s*=\s*(.+)",
+                     RegexOptions.IgnoreCase | RegexOptions.Multiline))
+        {
+            var idx = int.Parse(m.Groups[1].Value);
+            var key = m.Groups[2].Value.ToLowerInvariant();
+            var val = m.Groups[3].Value.Trim().TrimEnd('\r');
+            byIdx.TryGetValue(idx, out var cur);
+            byIdx[idx] = key == "name" ? (val, cur.Id) : (cur.Name, val);
+        }
+
+        var map = new Dictionary<string, string>();
+        foreach (var (idx, v) in byIdx.OrderBy(x => x.Key))
+        {
+            var id = string.IsNullOrWhiteSpace(v.Id) ? (idx + 1).ToString() : v.Id!.Trim();
+            var name = string.IsNullOrWhiteSpace(v.Name) ? $"Preset {id}" : v.Name!.Trim();
+            map[id] = name;
+        }
+        return map;
     }
 
     private static async Task<DriverResult> GotoPresetAsync(
@@ -723,7 +813,7 @@ public sealed class AxisDriver : HttpVendorDriverBase
     }
 }
 
-/// <summary>Uniview / UNV — API HTTP semelhante a Dahua em muitas linhas Lapi.</summary>
+/// <summary>Uniview / UNV ï¿½ API HTTP semelhante a Dahua em muitas linhas Lapi.</summary>
 public sealed class UniviewDriver : DahuaDriver
 {
     public override string Name => "uniview";
@@ -738,7 +828,7 @@ public sealed class UniviewDriver : DahuaDriver
     }
 }
 
-/// <summary>Bosch — ONVIF-first; URL RTSP típica CPP4/CPP6.</summary>
+/// <summary>Bosch ï¿½ ONVIF-first; URL RTSP tï¿½pica CPP4/CPP6.</summary>
 public sealed class BoschDriver : HttpVendorDriverBase
 {
     public override string Name => "bosch";
@@ -761,12 +851,12 @@ public sealed class BoschDriver : HttpVendorDriverBase
             {
                 "snapshot" => await SnapshotAsync(http, "/snap.jpg", ct),
                 "device_info" => await InfoAsync(http, ct),
-                _ => DriverResult.Fail($"ação '{action}' não suportada pelo driver bosch (use onvif p/ PTZ)")
+                _ => DriverResult.Fail($"aï¿½ï¿½o '{action}' nï¿½o suportada pelo driver bosch (use onvif p/ PTZ)")
             };
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
         {
-            return DriverResult.Fail($"câmera inacessível: {e.Message}");
+            return DriverResult.Fail($"cï¿½mera inacessï¿½vel: {e.Message}");
         }
     }
 
@@ -792,7 +882,7 @@ public sealed class BoschDriver : HttpVendorDriverBase
     }
 }
 
-/// <summary>Samsung / Hanwha WiseNet — SUNAPI snapshot + RTSP profile.</summary>
+/// <summary>Samsung / Hanwha WiseNet ï¿½ SUNAPI snapshot + RTSP profile.</summary>
 public sealed class SamsungDriver : HttpVendorDriverBase
 {
     public override string Name => "samsung";
@@ -817,12 +907,12 @@ public sealed class SamsungDriver : HttpVendorDriverBase
                 "device_info" => await Info(http, ct),
                 "ptz_move" or "ptz_stop" or "ptz_preset" =>
                     DriverResult.Fail("PTZ Samsung: use driver onvif ou perfil nativo Hanwha."),
-                _ => DriverResult.Fail($"ação '{action}' não suportada pelo driver samsung")
+                _ => DriverResult.Fail($"aï¿½ï¿½o '{action}' nï¿½o suportada pelo driver samsung")
             };
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
         {
-            return DriverResult.Fail($"câmera inacessível: {e.Message}");
+            return DriverResult.Fail($"cï¿½mera inacessï¿½vel: {e.Message}");
         }
     }
 

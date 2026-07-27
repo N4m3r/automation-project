@@ -76,6 +76,37 @@ public class WaveBTests
     }
 
     [Fact]
+    public async Task Intelbras_inherits_dahua_stream_url()
+    {
+        var cam = new Device { Host = "10.0.0.9", Username = "admin", Password = "x", Driver = "intelbras" };
+        var url = await new IntelbrasDriver().GetStreamUrlAsync(cam);
+        Assert.Contains("realmonitor", url);
+        Assert.Contains("10.0.0.9", url);
+    }
+
+    [Fact]
+    public void Dahua_parses_real_presets_from_getPresets()
+    {
+        const string body =
+            "list.preset[0].Name=Entrada\r\n" +
+            "list.preset[0].PresetID=1\r\n" +
+            "list.preset[1].Name=Portao\r\n" +
+            "list.preset[1].PresetID=2\r\n";
+        var map = DahuaDriver.ParsePresets(body);
+        Assert.Equal(2, map.Count);
+        Assert.Equal("Entrada", map["1"]);
+        Assert.Equal("Portao", map["2"]);
+    }
+
+    [Fact]
+    public void Dahua_presets_fallback_name_when_missing()
+    {
+        const string body = "list.preset[4].PresetID=7\r\n";
+        var map = DahuaDriver.ParsePresets(body);
+        Assert.Equal("Preset 7", map["7"]);
+    }
+
+    [Fact]
     public void TranscodePathName_suffix()
     {
         Assert.Equal("cam12tc", LiveTranscodeService.TranscodePathName(12));
