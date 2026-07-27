@@ -4,11 +4,16 @@
 logLevel: info
 
 # --- API de controle -------------------------------------------------------
-# So o backend, na mesma maquina, fala com esta API. Ela guarda as URLs RTSP
-# com usuario e senha das cameras: exposta na rede, entregaria as credenciais
-# de todos os equipamentos a quem fizesse um GET.
+# So o backend fala com esta API. Ela guarda as URLs RTSP com usuario e senha
+# das cameras: exposta na rede publica, entregaria as credenciais de todos os
+# equipamentos a quem fizesse um GET.
+# Em docker-compose o backend (container "api") e o MediaMTX ("media") sao
+# containers separados, entao a API precisa escutar na rede interna do compose
+# (nao apenas 127.0.0.1). O isolamento vem de NAO publicar a porta 9997 no host
+# (ver docker-compose.yml): so quem esta na rede "automation-project_default"
+# alcanca esta porta.
 api: yes
-apiAddress: 127.0.0.1:9997
+apiAddress: :9997
 
 # --- Autorizacao de streaming ---------------------------------------------
 # Cada tentativa de ler um stream e conferida pelo backend, que valida o token

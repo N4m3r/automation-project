@@ -26,7 +26,9 @@ services:
       - "8554:8554"   # RTSP
       - "8888:8888"   # HLS
       - "8889:8889"   # WebRTC
-      - "9997:9997"   # API de controle
+      # 9997 (API de controle) NAO e publicada no host de proposito: guarda as
+      # credenciais RTSP das cameras. So o container "api" a acessa via rede
+      # interna do compose (media:9997).
 
   api:
     build: .
@@ -35,6 +37,7 @@ services:
     environment:
       ConnectionStrings__Default: "Host=db;Database=platform;Username=app;Password=app"
       Security__JwtKey: "${SECURITY_JWT_KEY:-change-me-in-production-use-32chars-min}"
+      Security__BootstrapAdminPassword: "${BOOTSTRAP_ADMIN_PW:-}"
       Security__KeyRingPath: "/data/keys"
       Vms__MediaMtxApi: "http://media:9997"
       Vms__MediaPublicHost: "http://localhost"
@@ -45,7 +48,7 @@ services:
     volumes:
       - recordings:/data/recordings
       - keyring:/data/keys
-    ports: ["8080:8080"]
+    ports: ["8090:8080"]   # 8080 do host ocupado por outro servico (evolution_api)
 
   recorder:
     build: .

@@ -291,6 +291,7 @@ public class DahuaDriver : HttpVendorDriverBase
                     ? DriverResult.Success()
                     : DriverResult.Fail("talk_close falhou"),
                 "vca_configure" => await ConfigureVcaAsync(http, parameters, ct),
+                "encode_configure" or "set_codec" => await ConfigureEncodeAsync(http, parameters, ct),
                 _ => DriverResult.Fail($"ação '{action}' não suportada pelo driver dahua")
             };
         }
@@ -449,6 +450,44 @@ public class DahuaDriver : HttpVendorDriverBase
         return res.IsSuccessStatusCode
             ? DriverResult.Success(new Dictionary<string, string> { ["preset"] = preset })
             : DriverResult.Fail($"set preset HTTP {(int)res.StatusCode}");
+    }
+
+    /// <summary>
+    /// Reconfigura o codec de video na propria camera (Dahua/Intelbras) via
+    /// configManager. Necessario porque navegadores nao decodificam H.265/HEVC
+    /// no ao vivo: para o grid, o substream deve ser H.264.
+    /// Parametros: <c>codec</c> (H264|H265|MJPEG), <c>stream</c> (main|sub|both),
+    /// <c>channel</c> (0 = camera IP avulsa).
+    /// </summary>
+    private static async Task<DriverResult> ConfigureEncodeAsync(
+        HttpClient http, IDictionary<string, string>? p, CancellationToken ct)
+    {
+        p ??= new Dictionary<string, string>();
+        var comp = (p.TryGetValue("codec", out var c) ? c : "H264").ToUpperInvariant() switch
+        {
+            "H265" or "HEVC" or "H.265" => "H.265",
+            "MJPEG" or "JPEG" or "MJPG" => "MJPEG",
+            _ => "H.264"
+        };
+        var stream = (p.TryGetValue("stream", out var s) ? s : "sub").ToLowerInvariant();
+        var ch = p.TryGetValue("channel", out var chS) && int.TryParse(chS, out var chN) ? chN : 0;
+
+        var parts = new List<string>();
+        if (stream is "sub" or "both" or "extra")
+            parts.Add($"Encode[{ch}].ExtraFormat[0].Video.Compression={comp}");
+        if (stream is "main" or "both")
+            parts.Add($"Encode[{ch}].MainFormat[0].Video.Compression={comp}");
+        if (parts.Count == 0)
+            return DriverResult.Fail($"stream '{stream}' invalido (use main, sub ou both)");
+
+        var url = "/cgi-bin/configManager.cgi?action=setConfig&" + string.Join("&", parts);
+        var res = await http.GetAsync(url, ct);
+        return res.IsSuccessStatusCode
+            ? DriverResult.Success(new Dictionary<string, string>
+            {
+                ["codec"] = comp, ["stream"] = stream
+            })
+            : DriverResult.Fail($"encode HTTP {(int)res.StatusCode}");
     }
 
     /// <summary>

@@ -1670,6 +1670,27 @@ async function janelaCamera(id = null) {
           </div>
           <p class="hint">Perfis vêm de <b>Servidores de mídia</b>. O canal do perfil reescreve a URL
             RTSP (ex.: 101 principal, 102 substream). RTSP manual ignora o canal do perfil se preenchido.</p>
+          ${id && /^(dahua|intelbras|uniview)$/i.test(cam?.driver || '') ? `
+          <div style="border-top:1px solid #30363d;margin-top:12px;padding-top:12px">
+            <div class="inline" style="flex-wrap:wrap">
+              <label class="f">Codec de vídeo na câmera
+                <select id="encCodec">
+                  <option value="H264">H.264 (compatível no navegador)</option>
+                  <option value="H265">H.265 / HEVC</option>
+                </select></label>
+              <label class="f">Aplicar em
+                <select id="encStream">
+                  <option value="sub">Substream (grid / ao vivo)</option>
+                  <option value="main">Main (gravação)</option>
+                  <option value="both">Ambos</option>
+                </select></label>
+              <button type="button" class="ghost" onclick="aplicarCodec(${id})">Aplicar na câmera</button>
+            </div>
+            <div id="encOut" class="err" style="margin-top:8px"></div>
+            <p class="hint">Reconfigura o <b>codec na própria câmera</b> (Dahua/Intelbras), não só a URL.
+              O navegador não decodifica <b>H.265</b> no ao vivo — para o grid funcionar, deixe o
+              <b>substream em H.264</b>. Reabra o preview após aplicar.</p>
+          </div>` : ''}
         </div>
 
         <div class="tabbody hidden" data-t="preview">
@@ -2151,6 +2172,19 @@ async function executarDescobertaCameras() {
   } catch (e) {
     out.innerHTML = `<p class="off">${esc(e.message)}</p>`;
   }
+}
+
+async function aplicarCodec(id) {
+  const alvo = $('encOut');
+  if (alvo) alvo.innerHTML = '<span class="muted">Enviando à câmera…</span>';
+  try {
+    await api(`/api/vms/cameras/${id}/command/encode_configure`, {
+      method: 'POST',
+      body: JSON.stringify({ codec: $('encCodec').value, stream: $('encStream').value })
+    });
+    if (alvo) alvo.innerHTML =
+      '<span class="ok">✓ Codec aplicado na câmera. Reabra o preview / mosaico para atualizar.</span>';
+  } catch (e) { if (alvo) alvo.innerHTML = `<span class="off">${esc(e.message)}</span>`; }
 }
 
 async function cmd(id, acao, params) {

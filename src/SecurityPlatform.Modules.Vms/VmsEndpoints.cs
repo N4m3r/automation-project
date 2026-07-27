@@ -461,6 +461,8 @@ public static class VmsEndpoints
         {
             var needed = action.StartsWith("ptz", StringComparison.Ordinal) ? Permissions.CameraPtz
                 : action.StartsWith("vca", StringComparison.Ordinal) ? Permissions.CameraConfig
+                : action.StartsWith("encode", StringComparison.Ordinal)
+                    || action == "set_codec" ? Permissions.CameraConfig
                 : Permissions.CameraView;
 
             if (!await perms.HasAsync(ctx.User.UserId(), needed, ObjectTypes.Camera, id))
